@@ -15,11 +15,12 @@ use std::io::BufReader;
 use std::io::ErrorKind;
 use std::io::Write;
 use std::net::TcpStream;
+use std::sync::atomic::AtomicI32;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time::SystemTime;
-use tracing::Level;
-use tracing::{self, debug, error, info};
+use tracing::{self, error, info, Level};
 
 #[derive(Debug, Deserialize)]
 struct Bar {
@@ -196,7 +197,8 @@ fn check_iqfeed_health() -> i32 {
     };
 }
 
-fn main() {
+#[tokio::main(worker_threads = 15)]
+async fn main() {
     let start = SystemTime::now();
     let sentry_url = env::var("SENTRY_URL").unwrap();
     let _guard = sentry::init((
@@ -301,13 +303,18 @@ fn main() {
             if symbol.ends_with(".txt") {
                 let symbol_file = File::open(symbol).unwrap();
                 let lines = BufReader::new(symbol_file).lines();
-                let errs = lines
-                    .map(|line| match bar_type {
-                        Some("time") => bars::time_bars(&line.unwrap(), &String::from("15")),
+                let mut handles = vec![];
+                for line in lines {
+                    match bar_type {
+                        Some("time") => {
+                            handles.push(tokio::spawn(async move {
+                                bars::time_bars(&line.unwrap(), &String::from("15"))
+                            }));
+                        }
                         Some("dollar") => {
                             let opts = bars::BarOptions {
                                 delimiter: String::from(delimiter),
-                                symbol: &line.unwrap(),
+                                symbol: String::from(&line.unwrap()),
                                 dollar_threshold: 7000000.0,
                                 multiply,
                                 timestamp_index,
@@ -315,23 +322,21 @@ fn main() {
                                 volume_index,
                                 timestamp_type,
                             };
-                            bars::dollar_bars(&opts)
+                            handles.push(tokio::spawn(async move { bars::dollar_bars(&opts) }));
                         }
                         None => panic!("Must specify bar_type"),
                         _ => panic!("Must specify bar_type"),
-                    })
-                    .filter(|res| res.is_err())
-                    .flat_map(Err)
-                    .collect::<Vec<Box<dyn Error>>>();
-                if errs.is_empty() {
-                    Ok(())
-                } else {
-                    Err(ProcessingError { errs })
+                    }
                 }
+                let results = futures::future::join_all(handles).await;
+                for r in results {
+                    info!(results = ?r, "Result");
+                }
+                Err(ProcessingError { errs: vec![] })
             } else {
                 let opts = bars::BarOptions {
                     delimiter: String::from(delimiter),
-                    symbol: &symbol.to_owned(),
+                    symbol: symbol.to_owned(),
                     dollar_threshold: 7000000.0,
                     multiply,
                     timestamp_index,
@@ -363,6 +368,7 @@ fn main() {
             let symbol = subcmd_matches.value_of("symbol").unwrap();
             let output_dir = subcmd_matches.value_of("output_dir").unwrap();
             let no_mkt_hours = subcmd_matches.is_present("no_mkt_hours");
+            let request_id_inc = Arc::new(AtomicI32::new(0));
 
             if check_iqfeed_health() != 0 {
                 panic!("No iqfeed connection")
@@ -371,22 +377,26 @@ fn main() {
             if symbol.ends_with(".txt") {
                 let symbol_file = File::open(symbol).unwrap();
                 let lines = BufReader::new(symbol_file).lines();
-                let errs = lines
-                    .map(|line| {
-                        debug!(line = ?line.as_ref().unwrap().clone(), output_dir = ?output_dir, "calling iqfeed ticks");
-                        ticks::iqfeed_ticks(&line.unwrap(), &output_dir.to_owned(), no_mkt_hours)
-                    })
-                    .filter(|res| res.is_err())
-                    .flat_map(Err)
-                    .collect::<Vec<Box<dyn Error>>>();
-                if errs.is_empty() {
-                    Ok(())
-                } else {
-                    Err(ProcessingError { errs })
+                let mut handles = vec![];
+                for line in lines {
+                    let out = output_dir.to_owned();
+                    let request_id_inc = Arc::clone(&request_id_inc);
+                    handles.push(tokio::spawn(async move {
+                        ticks::iqfeed_ticks(&line.unwrap(), &out, no_mkt_hours, request_id_inc)
+                    }));
                 }
+                let results = futures::future::join_all(handles).await;
+                for r in results {
+                    info!(results = ?r, "Result");
+                }
+                Err(ProcessingError { errs: vec![] })
             } else {
-                match ticks::iqfeed_ticks(&symbol.to_owned(), &output_dir.to_owned(), no_mkt_hours)
-                {
+                match ticks::iqfeed_ticks(
+                    &symbol.to_owned(),
+                    output_dir,
+                    no_mkt_hours,
+                    request_id_inc,
+                ) {
                     Ok(_) => Ok(()),
                     Err(e) => Err(ProcessingError { errs: vec![e] }),
                 }
@@ -411,7 +421,7 @@ fn main() {
 
     std::process::exit(match err {
         Err(err) => {
-            error!(error = format!("{}", err).as_str(), "Something went wrong");
+            error!(error = ?err, "Something went wrong");
             1
         }
         Ok(_) => {
