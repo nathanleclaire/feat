@@ -34,10 +34,10 @@ pub enum Timestamp {
     Unix,
 }
 
-pub struct BarOptions<'o> {
+pub struct BarOptions {
     pub delimiter: String,
     pub multiply: f64,
-    pub symbol: &'o String,
+    pub symbol: String,
     pub timestamp_index: usize,
     pub last_index: usize,
     pub volume_index: usize,
@@ -45,7 +45,7 @@ pub struct BarOptions<'o> {
     pub dollar_threshold: f64,
 }
 
-fn list_tick_files(in_dir_path: PathBuf) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+fn list_tick_files(in_dir_path: PathBuf) -> Result<Vec<PathBuf>, Box<dyn Error + Send + Sync>> {
     let mut tick_files = fs::read_dir(in_dir_path)?
         .filter_map(|d| {
             d.ok().and_then(|f| {
@@ -65,7 +65,7 @@ fn list_tick_files(in_dir_path: PathBuf) -> Result<Vec<PathBuf>, Box<dyn Error>>
     Ok(tick_files)
 }
 
-pub fn time_bars(symbol: &str, interval: &str) -> Result<(), Box<dyn Error>> {
+pub fn time_bars(symbol: &str, interval: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
     let (mut open, mut high, mut low, mut cumulative_dollar, mut cumulative_volume) =
         (0.0, 0.0, 0.0, 0.0, 0.0);
 
@@ -142,13 +142,13 @@ pub fn time_bars(symbol: &str, interval: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn dollar_bars(opts: &BarOptions) -> Result<(), Box<dyn Error>> {
+pub fn dollar_bars(opts: &BarOptions) -> Result<(), Box<dyn Error + Send + Sync>> {
     let (mut open, mut high, mut low, mut close, mut cumulative_dollar, mut cumulative_volume) =
         (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     let mut bar_open_time = String::from("");
     let mut prev_tick_timestamp = Vec::new();
-    let out_dir_path = Path::new("bars").join(opts.symbol);
-    let in_dir_path = Path::new("ticks").join(opts.symbol);
+    let out_dir_path = Path::new("bars").join(&opts.symbol);
+    let in_dir_path = Path::new("ticks").join(&opts.symbol);
 
     info!(
         out_dir_path = out_dir_path.to_str().unwrap(),

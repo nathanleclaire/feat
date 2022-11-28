@@ -14,6 +14,8 @@ use std::io::prelude::*;
 use std::io::{self, ErrorKind};
 use std::net::TcpStream;
 use std::path::Path;
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Arc;
 use tracing::{self, debug, error, info};
 
 #[derive(Serialize, Deserialize)]
@@ -37,8 +39,13 @@ impl fmt::Display for IQFeedNoDataError {
 impl Error for IQFeedNoDataError {}
 
 // call iqfeed for ticks
-pub fn iqfeed_ticks(symbol: &str, out_dir: &str, no_mkt_hours: bool) -> Result<(), Box<dyn Error>> {
-    let out_dir_path = Path::new(out_dir).join(symbol);
+pub fn iqfeed_ticks(
+    symbol: &str,
+    out_dir: &str,
+    no_mkt_hours: bool,
+    request_id_inc: Arc<AtomicI32>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let out_dir_path = Path::new(&out_dir).join(symbol);
     fs::create_dir_all(out_dir_path.to_str().unwrap())?;
     let now_dt = Utc::now().with_timezone(&New_York);
     let file_name = format!("{}.csv", now_dt.format("%Y-%m-%d-%H-%M-%S"));
@@ -51,6 +58,7 @@ pub fn iqfeed_ticks(symbol: &str, out_dir: &str, no_mkt_hours: bool) -> Result<(
         }
         panic!("{}", err)
     });
+    let request_id = request_id_inc.fetch_add(1, Ordering::SeqCst);
 
     // _date_time strings for logging
     let mut min_date_time = String::new();
@@ -83,7 +91,6 @@ pub fn iqfeed_ticks(symbol: &str, out_dir: &str, no_mkt_hours: bool) -> Result<(
         min_date_time = min_date_time.as_str(),
         max_date_time = max_date_time.as_str(),
         out_file = out_path.to_str().unwrap(),
-        symbol = ?symbol,
         "Downloading iqfeed ticks"
     );
 
@@ -91,7 +98,11 @@ pub fn iqfeed_ticks(symbol: &str, out_dir: &str, no_mkt_hours: bool) -> Result<(
     stream.write_all("S,SET PROTOCOL,5.1\r\n".as_bytes())?;
 
     debug!(
-        request = format!("HTT,{},{},{},,,,1,{}\r\n", symbol, max_date_time, "", 1).as_str(),
+        request = format!(
+            "HTT,{},{},{},,,,{},{}\r\n",
+            symbol, max_date_time, "", request_id, 1
+        )
+        .as_str(),
         "Issuing request",
     );
 
@@ -113,7 +124,7 @@ pub fn iqfeed_ticks(symbol: &str, out_dir: &str, no_mkt_hours: bool) -> Result<(
         let line = line_res?;
         let v: Vec<&str> = line.split(',').collect();
         if &v[1].to_owned() == "E" {
-            error!(error = v[2], "IQFeed sent back an error");
+            error!(error = v[2], symbol = ?symbol, "IQFeed sent back an error");
             drop(out_file_buf);
             if n_ticks == 0 {
                 fs::remove_file(out_path)?;
@@ -126,6 +137,7 @@ pub fn iqfeed_ticks(symbol: &str, out_dir: &str, no_mkt_hours: bool) -> Result<(
         let tick_date_time = crate::iqfeed_date_time::parse(&v[1].to_owned())?;
         if tick_date_time > meta_cfg.max_date_time {
             meta_cfg.max_date_time = tick_date_time;
+        } else {
             out_file_buf.write_all(line.as_bytes())?;
             out_file_buf.write_all(b"\n")?;
             n_ticks += 1;
@@ -143,8 +155,7 @@ pub fn iqfeed_ticks(symbol: &str, out_dir: &str, no_mkt_hours: bool) -> Result<(
     if n_ticks == 0 {
         fs::remove_file(out_path)?;
     }
-
-    info!(n_ticks = n_ticks, "Finished writing ticks");
+    info!(n_ticks = n_ticks, symbol = symbol, "Finished writing ticks");
 
     Ok(())
 }

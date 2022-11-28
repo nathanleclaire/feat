@@ -8,7 +8,7 @@ use std::error::Error;
 
 pub const FORMAT: &str = "%Y-%m-%d %H:%M:%S.%f";
 
-pub fn parse(s: &str) -> Result<DateTime<Tz>, Box<dyn Error>> {
+pub fn parse(s: &str) -> Result<DateTime<Tz>, Box<dyn Error + Send + Sync>> {
     let year = s[..4].parse::<i32>()?;
     let month = s[5..7].parse::<u32>()?;
     let day = s[8..10].parse::<u32>()?;
