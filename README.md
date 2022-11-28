@@ -1,6 +1,6 @@
 # feat
 
-![feat logo, a warrior holding a sword and shield](https://featcmd.com/_images/feat.png | width=600)
+![feat logo, a warrior holding a sword and shield](https://featcmd.com/_images/feat.png)
 
 Feat (short for "feature") is a program for ingesting financial time series
 data (e.g., trades from an exchange) and using that data to generate samples
