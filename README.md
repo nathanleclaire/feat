@@ -46,8 +46,6 @@ and more.
 
 ## Benchmarks
 
-Fast is easy to claim. It's harder to back up with data.
-
 Here is one example of Feat processing dollar bars from a BTCUSDT Binance trade
 data CSV from [CryptoArchive](https://www.cryptoarchive.com.au/). This test was
 executed on a [t3a.xlarge
@@ -55,12 +53,17 @@ instance](https://aws.amazon.com/ec2/instance-types/t3/) (with 4 vCPUs and 16GB
 memory) on AWS, with the source file on the standard root block device (EBS).
 The bars are sampled at a rate of $7,000,000 per bar.
 
-``` $ feat bars dollar \ BTCUSDT \ --timestamp_index 3 \ --last_index 1 \
---volume_index 2 \ --delimiter "|" INFO feat::bars: Processing ticks into bars
-out_dir_path="bars/BTCUSDT" in_dir_path="ticks/BTCUSDT" symbol="BTCUSDT" INFO
-feat::bars: Sampling dollar bars
-out_file="bars/BTCUSDT/dollar-2021-09-12-17-11-39.csv" INFO feat: Finished all
-seconds=399 ```
+```
+$ feat bars dollar \
+	BTCUSDT \
+	--timestamp_index 3 \
+	--last_index 1 \
+	--volume_index 2 \
+	--delimiter "|"
+INFO feat::bars: Processing ticks into bars out_dir_path="bars/BTCUSDT" in_dir_path="ticks/BTCUSDT" symbol="BTCUSDT"
+INFO feat::bars: Sampling dollar bars out_file="bars/BTCUSDT/dollar-2021-09-12-17-11-39.csv"
+INFO feat: Finished all seconds=399
+```
 
 The source file is about 43GB large and it takes ~6.5 minutes to process the
 dollar bars. For comparison, `wc -l` on the tick file takes ~4.5 minutes.
