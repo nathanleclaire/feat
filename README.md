@@ -2,12 +2,12 @@
 
 ![feat logo, a warrior holding a sword and shield](https://featcmd.com/_images/feat.png)
 
-Feat (short for "feature") is a program for ingesting financial time series
-data (e.g., trades from an exchange) and using that data to generate samples
-and features for research, backtesting, and developing machine learning models.
-It is written in `Rust <https://www.rust-lang.org/>`_ and optimized for
-performance, enabling researchers to move faster on experimenting with new
-ideas, or simply to generate input data for existing models more quickly.
+Feat (short for "feature") is a program for ingesting financial time series data
+(e.g., trades from an exchange) and using that data to generate samples and
+features for research, backtesting, and developing machine learning models.  It
+is written in Rust and optimized for performance, enabling researchers to move
+faster on experimenting with new ideas, or simply to generate input data for
+existing models more quickly.
 
 It is inspired by the work of [Lopez de Prado](https://www.quantresearch.org/)
 and [mlfinlab](https://github.com/hudson-and-thames/mlfinlab).
